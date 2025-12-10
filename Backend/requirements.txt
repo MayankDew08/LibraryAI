@@ -1,0 +1,27 @@
+# FastAPI Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# Database
+sqlalchemy==2.0.36
+mysqlclient==2.2.6
+
+# Gemini AI (google-genai SDK - matches working Codes implementation)
+google-genai==0.3.0
+
+# Text-to-Speech (Fast, offline TTS)
+pyttsx3==2.98
+
+# PDF Processing
+PyMuPDF==1.25.2
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.20
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# Utilities
+httpx==0.28.1

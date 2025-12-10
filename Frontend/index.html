@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Library Management System</title>
+    <link rel="stylesheet" href="shared/styles/landing.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Background Image Slider -->
+    <div class="background-slider">
+        <div class="slide active" style="background-image: url('https://images.unsplash.com/photo-1521587760476-6c12a4b040da?q=80&w=2070')"></div>
+        <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=2070')"></div>
+        <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1481627834876-b7833e8f5570?q=80&w=2128')"></div>
+        <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=2073')"></div>
+        <div class="overlay"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 32V8C8 6.89543 8.89543 6 10 6H30C31.1046 6 32 6.89543 32 8V32C32 33.1046 31.1046 34 30 34H10C8.89543 34 8 33.1046 8 32Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 12H28M12 18H28M12 24H24" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="30" cy="30" r="6" fill="#6366F1"/>
+                    <path d="M28 30L30 32L32.5 28.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>LibraryAI</span>
+            </div>
+            <nav class="nav">
+                <a href="#features">Features</a>
+                <a href="#about">About</a>
+                <a href="#contact">Contact</a>
+            </nav>
+        </header>
+
+        <!-- Hero Section -->
+        <main class="hero">
+            <div class="hero-content">
+                <div class="badge">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 2L9.5 5.5L13 6L10.5 8.5L11 12L8 10L5 12L5.5 8.5L3 6L6.5 5.5L8 2Z" fill="currentColor"/>
+                    </svg>
+                    Powered by Google Gemini AI
+                </div>
+                
+                <h1 class="title">
+                    Transform Your Library Experience with
+                    <span class="gradient-text">AI Intelligence</span>
+                </h1>
+                
+                <p class="subtitle">
+                    Revolutionize learning with AI-powered summaries, interactive Q&A, 
+                    personalized podcasts, and intelligent chat assistance. Your smart library companion.
+                </p>
+
+                <!-- Role Selection Cards -->
+                <div class="role-selection">
+                    <div class="role-card student-card" onclick="navigateToRole('student')">
+                        <div class="role-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                <path d="M24 4L4 14L24 24L44 14L24 4Z" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M10 20V30C10 32 14 36 24 36C34 36 38 32 38 30V20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M40 16V28" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <h3>I'm a Student</h3>
+                        <p>Access books, AI summaries, Q&A, podcasts, and chat with your study materials</p>
+                        <div class="role-features">
+                            <span>📚 Browse Books</span>
+                            <span>🤖 AI Chat</span>
+                            <span>🎧 Podcasts</span>
+                            <span>📖 Borrow</span>
+                        </div>
+                        <button class="role-button">
+                            Get Started
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M7 4L13 10L7 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="role-card admin-card" onclick="navigateToRole('admin')">
+                        <div class="role-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                <rect x="6" y="10" width="36" height="28" rx="2" stroke="currentColor" stroke-width="3"/>
+                                <path d="M6 18H42" stroke="currentColor" stroke-width="3"/>
+                                <path d="M16 26H32M16 32H24" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                                <circle cx="38" cy="12" r="6" fill="#6366F1"/>
+                                <path d="M38 9V12L40 14" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <h3>I'm an Admin</h3>
+                        <p>Manage library, upload books, generate AI content, and control user access</p>
+                        <div class="role-features">
+                            <span>📤 Upload Books</span>
+                            <span>⚡ AI Generation</span>
+                            <span>👥 Manage Users</span>
+                            <span>📊 Analytics</span>
+                        </div>
+                        <button class="role-button">
+                            Admin Panel
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M7 4L13 10L7 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features Highlights -->
+            <div class="features-grid" id="features">
+                <div class="feature-item">
+                    <div class="feature-icon">🤖</div>
+                    <h4>AI-Powered Chat</h4>
+                    <p>Ask questions and get instant answers from your study materials using RAG technology</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📝</div>
+                    <h4>Smart Summaries</h4>
+                    <p>AI-generated comprehensive summaries to grasp key concepts quickly</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">❓</div>
+                    <h4>Interactive Q&A</h4>
+                    <p>Practice with AI-generated questions and answers tailored to your content</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🎧</div>
+                    <h4>Audio Podcasts</h4>
+                    <p>Listen to AI-generated conversational podcasts while on the go</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer" id="about">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h5>About LibraryAI</h5>
+                    <p>Enhancing education through AI-powered library management and intelligent learning tools.</p>
+                </div>
+                <div class="footer-section">
+                    <h5>Quick Links</h5>
+                    <a href="#features">Features</a>
+                    <a href="#contact">Contact</a>
+                    <a href="#privacy">Privacy Policy</a>
+                </div>
+                <div class="footer-section" id="contact">
+                    <h5>Contact</h5>
+                    <p>Email: support@libraryai.com</p>
+                    <p>© 2025 LibraryAI. All rights reserved.</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="shared/scripts/landing.js"></script>
+</body>
+</html>

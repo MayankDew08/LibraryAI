@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard - LibraryAI</title>
+    <link rel="stylesheet" href="../../shared/styles/landing.css">
+    <link rel="stylesheet" href="../styles/dashboard.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-slider">
+        <div class="slide active" style="background-image: url('https://images.unsplash.com/photo-1481627834876-b7833e8f5570?q=80&w=2128')"></div>
+        <div class="overlay"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="student-header">
+        <div class="logo">
+            <svg width="36" height="36" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="10" width="28" height="20" rx="2" stroke="#6366F1" stroke-width="2"/>
+                <path d="M6 16H34" stroke="#6366F1" stroke-width="2"/>
+                <circle cx="30" cy="12" r="6" fill="#6366F1"/>
+            </svg>
+            <span>LibraryAI</span>
+        </div>
+        
+        <nav class="header-nav">
+            <a href="#" class="nav-link active" data-view="library">Library</a>
+            <a href="#" class="nav-link" data-view="my-books">My Books</a>
+        </nav>
+
+        <div class="header-actions">
+            <div class="student-profile">
+                <div class="student-avatar" id="studentAvatar">S</div>
+                <span id="studentName">Student</span>
+            </div>
+            <a href="../../index.html" class="logout-btn">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M7 17H4C3.44772 17 3 16.5523 3 16V4C3 3.44772 3.44772 3 4 3H7M13 13L17 10M17 10L13 7M17 10H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Library View -->
+        <div id="library-view" class="view-content active">
+            <div class="search-section">
+                <div class="search-bar">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M12 12L16 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Search books by title...">
+                </div>
+            </div>
+
+            <div id="booksContainer" class="books-container"></div>
+        </div>
+
+        <!-- My Books View -->
+        <div id="my-books-view" class="view-content">
+            <div class="content-card">
+                <h2>My Borrowed Books</h2>
+                <p class="card-subtitle">Track your borrowed books and due dates</p>
+                <div id="myBooksContainer"></div>
+            </div>
+        </div>
+
+        <!-- Book Detail Modal -->
+        <div id="bookDetailModal" class="modal">
+            <div class="modal-content">
+                <button class="modal-close" onclick="closeBookDetail()">&times;</button>
+                
+                <div class="book-detail-header">
+                    <div class="book-detail-cover">
+                        <img id="detailCoverImage" src="" alt="">
+                    </div>
+                    <div class="book-detail-info">
+                        <h2 id="detailTitle"></h2>
+                        <p class="detail-author" id="detailAuthor"></p>
+                        <p class="detail-availability" id="detailAvailability"></p>
+                        <div style="display: flex; gap: 1rem;">
+                            <button class="btn-primary" id="borrowBookBtn" onclick="borrowBook()">Borrow Book</button>
+                            <button class="btn-secondary" id="returnBookBtn" onclick="returnBook()" style="display: none;">Return Book</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-tabs">
+                    <button class="tab-btn active" data-tab="pdf">Read PDF</button>
+                    <button class="tab-btn" data-tab="summary">Summary</button>
+                    <button class="tab-btn" data-tab="qa">Q&A</button>
+                    <button class="tab-btn" data-tab="audio">Podcast</button>
+                    <button class="tab-btn" data-tab="chat">Chat</button>
+                </div>
+
+                <div class="tab-content">
+                    <!-- PDF Tab -->
+                    <div id="pdf-tab" class="tab-pane active">
+                        <div class="pdf-viewer">
+                            <embed id="pdfEmbed" type="application/pdf" width="100%" height="600px">
+                        </div>
+                    </div>
+
+                    <!-- Summary Tab -->
+                    <div id="summary-tab" class="tab-pane">
+                        <div class="content-loading">
+                            <div class="spinner"></div>
+                            <p>Loading summary...</p>
+                        </div>
+                        <div id="summaryContent" class="content-display"></div>
+                    </div>
+
+                    <!-- Q&A Tab -->
+                    <div id="qa-tab" class="tab-pane">
+                        <div class="content-loading">
+                            <div class="spinner"></div>
+                            <p>Loading Q&A...</p>
+                        </div>
+                        <div id="qaContent" class="content-display"></div>
+                    </div>
+
+                    <!-- Audio Tab -->
+                    <div id="audio-tab" class="tab-pane">
+                        <div class="content-loading">
+                            <div class="spinner"></div>
+                            <p>Loading podcast...</p>
+                        </div>
+                        <div id="audioContent" class="audio-player"></div>
+                    </div>
+
+                    <!-- Chat Tab -->
+                    <div id="chat-tab" class="tab-pane">
+                        <div class="chat-container">
+                            <div class="chat-messages" id="chatMessages"></div>
+                            <div class="chat-input-area">
+                                <input type="text" id="chatInput" placeholder="Ask a question about this book...">
+                                <button onclick="sendChatMessage()">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path d="M2 10L18 2L10 18L8 11L2 10Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/dashboard.js"></script>
+</body>
+</html>
