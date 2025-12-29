@@ -5,32 +5,35 @@ from app.config.database import get_db
 from app.services.admin_books import add_book_with_files, add_book_without_static_content
 from app.schemas.book_schemas import BookResponseSchema, BookCreateSchema, BookUpdateSchema
 from app.models.books import Books
+from app.models.admin import Admin
 from app.services.rag_service import rag_service
+from app.services.auth import get_current_admin
 
 router = APIRouter(prefix="/admin/books", tags=["admin-books"])
 
 
 @router.get("/")
-def list_all_books(db: Session = Depends(get_db)):
+def list_all_books(
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
     """Get list of all books with their basic information and RAG indexing status"""
     books = db.query(Books).all()
     books_list = []
     
     for book in books:
-        # Check RAG indexing status
-        rag_status = rag_service.check_index_status(book.book_id)
-        
         books_list.append({
             "book_id": book.book_id,
             "title": book.title,
             "author": book.author,
+            "categories": [cat.name for cat in book.categories],
             "total_copies": book.total_copies,
             "available_copies": book.available_copies,
             "cover_image": book.cover_image,
             "pdf_url": book.pdf_url,
             "created_at": book.created_at,
-            "rag_indexed": rag_status.get("indexed", False),
-            "rag_collection": rag_status.get("collection_name", None)
+            "is_public": book.is_public,
+            "rag_indexed": book.rag_indexed
         })
     
     return books_list
@@ -41,9 +44,11 @@ def create_book(
     title: str = Form(...),
     author: str = Form(...),
     total_copies: int = Form(...),
+    categories: str = Form(..., description="Comma-separated category names"),
     pdf_file: UploadFile = File(...),
     cover_image: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """
     Create a new book with full processing:
@@ -51,13 +56,19 @@ def create_book(
     - Generates summary, Q&A, podcast script, and audio (static content)
     - Indexes PDF for RAG chat (vector embeddings)
     
+    Categories should be comma-separated (e.g., "Fiction,Self-Help,Business")
+    
     This endpoint does EVERYTHING automatically.
     """
     try:
+        # Parse categories from comma-separated string
+        category_list = [cat.strip() for cat in categories.split(',') if cat.strip()]
+        
         book_data = BookCreateSchema(
             title=title,
             author=author,
-            total_copies=total_copies
+            total_copies=total_copies,
+            categories=category_list
         )
         result = add_book_with_files(db, book_data, pdf_file, cover_image)
         return result
@@ -70,9 +81,11 @@ def create_book_without_static_content(
     title: str = Form(...),
     author: str = Form(...),
     total_copies: int = Form(...),
+    categories: str = Form(..., description="Comma-separated category names"),
     pdf_file: UploadFile = File(...),
     cover_image: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """
     Create a new book with ONLY RAG indexing (FAST):
@@ -80,14 +93,20 @@ def create_book_without_static_content(
     - Indexes PDF for RAG chat (vector embeddings)
     - SKIPS: summary, Q&A, podcast generation (saves time)
     
+    Categories should be comma-separated (e.g., "Fiction,Self-Help,Business")
+    
     Use this when you want faster uploads and only need the chat feature.
     Students can still use /rag/books/{book_id}/query to ask questions.
     """
     try:
+        # Parse categories from comma-separated string
+        category_list = [cat.strip() for cat in categories.split(',') if cat.strip()]
+        
         book_data = BookCreateSchema(
             title=title,
             author=author,
-            total_copies=total_copies
+            total_copies=total_copies,
+            categories=category_list
         )
         result = add_book_without_static_content(db, book_data, pdf_file, cover_image)
         return result
@@ -104,7 +123,8 @@ async def update_book(
     available_copies: Optional[int] = Form(None),
     pdf_file: Optional[UploadFile] = File(None),
     cover_image: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """
     Update book details. All fields are optional.
@@ -224,7 +244,8 @@ async def update_book(
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_book(
     book_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """Delete a book and its RAG index"""
     book = db.query(Books).filter(Books.book_id == book_id).first()

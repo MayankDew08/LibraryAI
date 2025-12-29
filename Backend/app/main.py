@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routes import auth, admin_books, student_books, borrow, rag
+from app.routes import auth, admin_books, student_books, student_generation, borrow, rag, otp
 import os
 
 app = FastAPI(
@@ -28,8 +28,10 @@ if os.path.exists(static_path):
 app.include_router(auth.router)
 app.include_router(admin_books.router)
 app.include_router(student_books.router)
+app.include_router(student_generation.router)
 app.include_router(borrow.router)
 app.include_router(rag.router)
+app.include_router(otp.router)
 
 
 @app.get("/")

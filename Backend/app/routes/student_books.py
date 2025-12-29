@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from typing import Optional
 from app.schemas.static_content_schemas import StaticContentSchema
 from app.services.student_books import (
     get_static_content, 
@@ -24,23 +25,48 @@ def list_all_books(db: Session = Depends(get_db)):
             "book_id": book.book_id,
             "title": book.title,
             "author": book.author,
+            "categories": [cat.name for cat in book.categories],
             "available_copies": book.available_copies,
             "total_copies": book.total_copies,
             "cover_image": book.cover_image,
-            "pdf_url": book.pdf_url
+            "pdf_url": book.pdf_url,
+            "is_public": book.is_public,  # 1 = can generate AI, 0 = cannot
+            "rag_indexed": book.rag_indexed  # 1 = chat available, 0 = not available
         }
         for book in books
     ]
 
 
 @router.get("/search")
-def search_books_by_title(
-    title: str = Query(..., min_length=1, description="Book title to search for"),
+def search_books_by_filters(
+    title: Optional[str] = Query(None, description="Book title to search for"),
+    author: Optional[str] = Query(None, description="Author name to search for"),
+    categories: Optional[str] = Query(None, description="Comma-separated category names"),
     db: Session = Depends(get_db)
 ):
-    """Search for books by title (case-insensitive partial match)"""
+    """
+    Search for books by title, author, and/or categories (case-insensitive partial match).
+    All parameters are optional. You can search by one or more criteria.
+    
+    Examples:
+    - /search?title=psychology
+    - /search?author=carnegie
+    - /search?categories=Fiction,Self-Help
+    - /search?title=habits&author=clear
+    - /search?title=atomic&categories=Self-Help
+    """
     try:
-        books = search_books(db, title)
+        # Parse categories from comma-separated string
+        category_list = None
+        if categories:
+            category_list = [cat.strip() for cat in categories.split(',') if cat.strip()]
+        
+        books = search_books(
+            db=db,
+            title=title,
+            author=author,
+            categories=category_list
+        )
         return books
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

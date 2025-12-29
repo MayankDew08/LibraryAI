@@ -4,6 +4,7 @@ from app.models.books import Books
 from app.models.users import User
 import app.schemas.borrow_schemas as borrow_schemas
 from datetime import datetime, timedelta, timezone
+from app.services.email_service import email_service
 
 
 def borrow_book(db: Session, borrow_data: borrow_schemas.BorrowCreateSchema):
@@ -59,6 +60,18 @@ def borrow_book(db: Session, borrow_data: borrow_schemas.BorrowCreateSchema):
     db.add(new_borrow)
     db.commit()
     db.refresh(new_borrow)
+    
+    # Send borrow confirmation email
+    try:
+        email_service.send_borrow_confirmation(
+            to_email=str(user.email),
+            user_name=str(user.name),
+            book_title=str(book.title),
+            borrow_date=new_borrow.borrowed_date.strftime('%Y-%m-%d'),
+            due_date=new_borrow.due_date.strftime('%Y-%m-%d')
+        )
+    except Exception as e:
+        print(f"⚠️  Failed to send borrow confirmation email: {str(e)}")
     
     return {
         "borrow_id": new_borrow.borrow_id,

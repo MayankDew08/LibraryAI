@@ -1,31 +1,57 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.models.static_content import StaticContent
 from app.models.books import Books
+from app.models.category import Category
 import app.schemas.static_content_schemas as schemas_static_content
 from app.services.gemini_ai import generate_summary, generate_qa_pairs, generate_podcast_script
 from app.services.audio_generation import generate_podcast_audio
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 
-def search_books(db: Session, title: str):
+def search_books(
+    db: Session, 
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    categories: Optional[List[str]] = None
+):
     """
-    Search for books by title (case-insensitive partial match)
+    Search for books by title, author, and/or categories (case-insensitive partial match)
     
     Args:
         db: Database session
-        title: Book title to search for
+        title: Book title to search for (optional)
+        author: Author name to search for (optional)
+        categories: List of category names to search for (optional)
         
     Returns:
         List of matching books with basic info
     """
-    if not title or len(title.strip()) < 1:
-        raise ValueError("Search title must be at least 1 character")
+    query = db.query(Books)
     
-    # Case-insensitive partial match search
-    books = db.query(Books).filter(
-        Books.title.ilike(f"%{title}%")
-    ).all()
+    filters = []
+    
+    # Add title filter if provided
+    if title and title.strip():
+        filters.append(Books.title.ilike(f"%{title.strip()}%"))
+    
+    # Add author filter if provided
+    if author and author.strip():
+        filters.append(Books.author.ilike(f"%{author.strip()}%"))
+    
+    # Add category filter if provided
+    if categories and len(categories) > 0:
+        # Search for books that have ANY of the specified categories
+        query = query.join(Books.categories).filter(
+            Category.name.in_(categories)
+        )
+    
+    # Apply title and author filters
+    if filters:
+        query = query.filter(or_(*filters))
+    
+    books = query.distinct().all()
     
     # Return formatted results
     return [
@@ -33,6 +59,7 @@ def search_books(db: Session, title: str):
             "book_id": book.book_id,
             "title": book.title,
             "author": book.author,
+            "categories": [cat.name for cat in book.categories],
             "cover_image": book.cover_image,
             "available_copies": book.available_copies,
             "total_copies": book.total_copies

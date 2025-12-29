@@ -6,6 +6,8 @@ from app.schemas.borrow_schemas import BorrowCreateSchema, BorrowSchema, Student
 from app.models.borrow import Borrow
 from app.models.books import Books
 from app.models.users import User
+from app.models.admin import Admin
+from app.services.auth import get_current_admin
 from pydantic import BaseModel
 from datetime import timezone
 
@@ -91,7 +93,8 @@ def get_user_borrows(
 
 @router.get("/admin/all-borrows")
 def get_all_user_borrows(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """Get all borrow records with user names, emails, book titles, dates, and fines"""
     # Get all borrow records
@@ -125,7 +128,8 @@ def get_all_user_borrows(
 
 @router.get("/admin/pending-verifications")
 def get_pending_verifications(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """Admin views all borrow records awaiting fine verification"""
     # Get all returned books with outstanding fines
@@ -171,7 +175,8 @@ def get_pending_verifications(
 def admin_verify_fine_payment(
     borrow_id: int,
     verify_data: AdminVerifySchema,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """Admin verifies fine payment and completes return (deletes record)"""
     try:
@@ -184,7 +189,8 @@ def admin_verify_fine_payment(
 @router.delete("/{borrow_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_borrow(
     borrow_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
 ):
     """Delete a borrow record (admin only)"""
     borrow = db.query(Borrow).filter(Borrow.borrow_id == borrow_id).first()

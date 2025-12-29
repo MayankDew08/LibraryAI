@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models.books import Books
+from app.models.category import Category
 import app.schemas.book_schemas as schemas_books
 from app.utils.storage import save_file
 from app.services.static_content_service import create_static_content
@@ -7,6 +8,24 @@ from app.services.rag_service import rag_service
 from fastapi import UploadFile
 from typing import List
 import os
+
+
+def get_or_create_categories(db: Session, category_names: List[str]) -> List[Category]:
+    """
+    Get existing categories or create new ones.
+    Returns list of Category objects.
+    """
+    categories = []
+    for name in category_names:
+        # Check if category exists
+        category = db.query(Category).filter(Category.name == name).first()
+        if not category:
+            # Create new category
+            category = Category(name=name)
+            db.add(category)
+            db.flush()  # Get the ID without committing
+        categories.append(category)
+    return categories
 
 
 def add_book_with_files(
@@ -43,52 +62,73 @@ def add_book_with_files(
         # Save cover image
         cover_path = save_file(cover_image, "covers")
         
-        # Create book record
+        # Create book record (PUBLIC - allows AI)
         new_book = Books(
             title=book_data.title,
             author=book_data.author,
             pdf_url=pdf_path,
             cover_image=cover_path,
             total_copies=book_data.total_copies,
-            available_copies=book_data.total_copies
+            available_copies=book_data.total_copies,
+            is_public=1  # Public - allows student-triggered AI generation
         )
         
         db.add(new_book)
+        db.flush()  # Get book_id without committing
+        
+        # Handle categories
+        categories = get_or_create_categories(db, book_data.categories)
+        new_book.categories = categories
+        
         db.commit()
         db.refresh(new_book)
         
-        # Generate content automatically when admin adds book
+        # Generate RAG index ONLY (no automatic AI content)
+        rag_indexed = False
+        rag_stats = {}
         try:
-            content = create_static_content(db, new_book.book_id, pdf_path)
-            content_generated = True
-            content_message = "Book and all content generated successfully"
-        except Exception as e:
-            content_generated = False
-            content_message = f"Book added but content generation failed: {str(e)}"
-        
-        # Generate RAG index automatically
-        try:
+            print(f"Starting RAG indexing for book {new_book.book_id}...")
             rag_result = rag_service.process_pdf(pdf_path, new_book.book_id)
             rag_indexed = rag_result.get("success", False)
-            rag_stats = {
-                "indexed": rag_indexed,
-                "num_chunks": rag_result.get("unique_chunks", 0),
-                "collection": rag_result.get("collection_name", "")
-            } if rag_indexed else {"error": rag_result.get("error", "Unknown error")}
+            
+            if rag_indexed:
+                # Update book's rag_indexed flag in database using direct query
+                db.query(Books).filter(Books.book_id == new_book.book_id).update({"rag_indexed": 1})
+                db.commit()
+                db.refresh(new_book)
+                print(f"✓ RAG indexed successfully: {rag_result.get('unique_chunks', 0)} chunks")
+                rag_stats = {
+                    "indexed": rag_indexed,
+                    "num_chunks": rag_result.get("unique_chunks", 0),
+                    "collection": rag_result.get("collection_name", "")
+                }
+            else:
+                print(f"✗ RAG indexing failed: {rag_result.get('error', 'Unknown error')}")
+                rag_stats = {"error": rag_result.get("error", "Unknown error")}
         except Exception as e:
+            print(f"✗ RAG indexing exception: {str(e)}")
             rag_indexed = False
             rag_stats = {"error": str(e)}
+        
+        # Build success message
+        if rag_indexed:
+            content_message = "✓ Book added successfully with RAG indexing. Students can generate AI content on-demand and use chat feature!"
+        else:
+            content_message = "✓ Book added successfully. RAG indexing failed - students will need to retry or contact admin."
         
         return {
             "message": content_message,
             "book_id": new_book.book_id,
             "title": new_book.title,
             "author": new_book.author,
+            "categories": [cat.name for cat in new_book.categories],
             "pdf_url": pdf_path,
             "cover_image": cover_path,
-            "content_generated": content_generated,
+            "is_public": new_book.is_public,
+            "content_generated": False,
             "rag_indexed": rag_indexed,
-            "rag_stats": rag_stats
+            "rag_stats": rag_stats,
+            "note": "AI content (Summary/Q&A/Podcast) will be generated on-demand by students"
         }
             
     except Exception as e:
@@ -136,35 +176,54 @@ def add_book_without_static_content(
         # Save cover image
         cover_path = save_file(cover_image, "covers")
         
-        # Create book record
+        # Create book record (CONFIDENTIAL - no AI)
         new_book = Books(
             title=book_data.title,
             author=book_data.author,
             pdf_url=pdf_path,
             cover_image=cover_path,
             total_copies=book_data.total_copies,
-            available_copies=book_data.total_copies
+            available_copies=book_data.total_copies,
+            is_public=0  # Confidential - students CANNOT generate AI content
         )
         
         db.add(new_book)
+        db.flush()  # Get book_id without committing
+        
+        # Handle categories
+        categories = get_or_create_categories(db, book_data.categories)
+        new_book.categories = categories
+        
         db.commit()
         db.refresh(new_book)
         
         # Generate RAG index ONLY (skip static content generation)
+        rag_indexed = False
+        rag_stats = {}
+        message = "Book added"
         try:
+            print(f"Starting RAG indexing for book {new_book.book_id}...")
             rag_result = rag_service.process_pdf(pdf_path, new_book.book_id)
             rag_indexed = rag_result.get("success", False)
-            rag_stats = {
-                "indexed": rag_indexed,
-                "num_chunks": rag_result.get("unique_chunks", 0),
-                "collection": rag_result.get("collection_name", "")
-            } if rag_indexed else {"error": rag_result.get("error", "Unknown error")}
             
             if rag_indexed:
-                message = "Book added and RAG indexed successfully (static content skipped)"
+                # Update book's rag_indexed flag in database using direct query
+                db.query(Books).filter(Books.book_id == new_book.book_id).update({"rag_indexed": 1})
+                db.commit()
+                db.refresh(new_book)
+                print(f"✓ RAG indexed successfully: {rag_result.get('unique_chunks', 0)} chunks")
+                message = "Book added and RAG indexed successfully (confidential - students cannot generate AI content)"
+                rag_stats = {
+                    "indexed": rag_indexed,
+                    "num_chunks": rag_result.get("unique_chunks", 0),
+                    "collection": rag_result.get("collection_name", "")
+                }
             else:
-                message = f"Book added but RAG indexing failed: {rag_stats.get('error', 'Unknown error')}"
+                print(f"✗ RAG indexing failed: {rag_result.get('error', 'Unknown error')}")
+                message = f"Book added but RAG indexing failed: {rag_result.get('error', 'Unknown error')}"
+                rag_stats = {"error": rag_result.get("error", "Unknown error")}
         except Exception as e:
+            print(f"✗ RAG indexing exception: {str(e)}")
             rag_indexed = False
             rag_stats = {"error": str(e)}
             message = f"Book added but RAG indexing failed: {str(e)}"
@@ -174,6 +233,7 @@ def add_book_without_static_content(
             "book_id": new_book.book_id,
             "title": new_book.title,
             "author": new_book.author,
+            "categories": [cat.name for cat in new_book.categories],
             "pdf_url": pdf_path,
             "cover_image": cover_path,
             "content_generated": False,  # Explicitly False

@@ -21,8 +21,14 @@ class RAGService:
     """RAG Service for intelligent document Q&A"""
     
     def __init__(self):
-        # Local embeddings (free, fast, private)
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Local embeddings - FASTEST option with good accuracy
+        # all-MiniLM-L6-v2: 2x faster (384 dim), excellent for speed
+        # all-mpnet-base-v2: Slower (768 dim), slightly better accuracy
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},  # Use 'cuda' if you have GPU
+            encode_kwargs={'normalize_embeddings': True, 'batch_size': 64}  # Maximum batch size for speed
+        )
         
         # Vector store directory
         self.vectorstore_path = "static/vectordb"
@@ -69,8 +75,8 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
         text = re.sub(r'\s+', ' ', text).strip()
         return text
     
-    def is_similar(self, text1: str, text2: str, threshold: float = 0.85) -> bool:
-        """Check if two texts are similar (for deduplication)"""
+    def is_similar(self, text1: str, text2: str, threshold: float = 0.95) -> bool:
+        """Check if two texts are similar (for deduplication) - using 0.95 to be less aggressive"""
         return SequenceMatcher(None, text1, text2).ratio() > threshold
     
     def process_pdf(self, pdf_path: str, book_id: int) -> Dict:
@@ -87,58 +93,70 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
         """
         try:
             # Step 1: Load PDF
+            print(f"Loading PDF from: {pdf_path}")
             loader = PyPDFLoader(pdf_path)
             docs = loader.load()
             
             if not docs:
+                print("❌ PDF loading failed or PDF is empty")
                 return {
                     "success": False,
                     "error": "Failed to load PDF or PDF is empty"
                 }
             
+            print(f"✓ Loaded {len(docs)} pages from PDF")
+            
             # Step 2: Clean text
             for doc in docs:
                 doc.page_content = self.clean_text(doc.page_content)
             
-            # Step 3: Chunk text intelligently
+            # Step 3: Chunk text intelligently (optimized for speed and accuracy)
+            print("Chunking text...")
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=600,  # Optimal for educational content
-                chunk_overlap=150,  # Preserve context at boundaries
-                separators=["\n\n", "\n", ". ", "! ", "? ", "; ", ": ", " ", ""]
+                chunk_size=800,  # Larger chunks = fewer chunks = faster processing
+                chunk_overlap=100,  # Reduced overlap for speed
+                separators=["\n\n", "\n", ". ", "! ", "? ", "; ", ": ", " ", ""],
+                length_function=len
             )
             splits = text_splitter.split_documents(docs)
+            print(f"✓ Created {len(splits)} chunks")
             
-            # Step 4: Advanced deduplication
+            # Step 4: Fast deduplication (optimized for speed)
+            print("Deduplicating chunks...")
             unique_splits = []
+            seen_hashes = set()  # Fast hash-based lookup
+            
             for split in splits:
                 content = split.page_content.strip()
                 
                 # Skip chunks that are too short
-                if len(content) < 100:
+                if len(content) < 50:
                     continue
                 
-                # Check against existing unique chunks
-                is_duplicate = False
-                for existing in unique_splits:
-                    if self.is_similar(content.lower(), existing.page_content.lower()):
-                        is_duplicate = True
-                        break
+                # Fast hash-based deduplication (exact matches only)
+                content_hash = hash(content.lower())
+                if content_hash in seen_hashes:
+                    continue
                 
-                if not is_duplicate:
-                    # Add book_id to metadata for filtering
-                    split.metadata['book_id'] = book_id
-                    unique_splits.append(split)
+                seen_hashes.add(content_hash)
+                split.metadata['book_id'] = book_id
+                unique_splits.append(split)
             
             if not unique_splits:
+                print(f"❌ No valid chunks after deduplication (started with {len(splits)} chunks)")
                 return {
                     "success": False,
                     "error": "No valid chunks after deduplication (PDF might be too short or corrupted)"
                 }
             
-            # Step 5 & 6: Generate embeddings and store in ChromaDB
-            collection_name = f"book_{book_id}"
+            print(f"✓ Deduplicated to {len(unique_splits)} unique chunks")
             
-            # Create/update vector store for this book
+            # Step 5 & 6: Generate embeddings and store in ChromaDB (with progress tracking)
+            collection_name = f"book_{book_id}"
+            print(f"Generating embeddings for {len(unique_splits)} chunks (this may take a few minutes)...")
+            print(f"⏳ Processing in batches of 32... Progress: 0%")
+            
+            # Create/update vector store for this book (batch processing is handled internally)
             vectorstore = Chroma.from_documents(
                 documents=unique_splits,
                 embedding=self.embeddings,
@@ -146,10 +164,12 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
                 persist_directory=self.vectorstore_path
             )
             
+            print(f"✓ Vector store created successfully ({len(unique_splits)} embeddings generated)")
+            
             # Calculate deduplication percentage
             dedup_percentage = ((len(splits) - len(unique_splits)) / len(splits) * 100) if splits else 0
             
-            return {
+            result = {
                 "success": True,
                 "total_pages": len(docs),
                 "total_chunks": len(splits),
@@ -158,6 +178,8 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
                 "collection_name": collection_name,
                 "message": f"Successfully indexed {len(unique_splits)} unique chunks from {len(docs)} pages"
             }
+            print(f"✓ RAG indexing complete: {result['message']}")
+            return result
             
         except Exception as e:
             return {
@@ -183,12 +205,36 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
         try:
             collection_name = f"book_{book_id}"
             
-            # Load existing vectorstore
-            vectorstore = Chroma(
-                collection_name=collection_name,
-                embedding_function=self.embeddings,
-                persist_directory=self.vectorstore_path
-            )
+            print(f"🔍 Querying book {book_id}, collection: {collection_name}")
+            
+            # Load existing vectorstore with error handling
+            try:
+                vectorstore = Chroma(
+                    collection_name=collection_name,
+                    embedding_function=self.embeddings,
+                    persist_directory=self.vectorstore_path
+                )
+                
+                # Check if collection exists and has documents
+                try:
+                    collection = vectorstore._collection
+                    doc_count = collection.count()
+                    if doc_count == 0:
+                        print(f"❌ Collection {collection_name} is empty")
+                        return {
+                            "success": False,
+                            "error": f"Book {book_id} has not been indexed yet. Please wait for RAG indexing to complete or re-upload the book."
+                        }
+                    print(f"✓ Found {doc_count} chunks in collection")
+                except Exception as count_error:
+                    print(f"⚠️ Could not verify collection: {str(count_error)}")
+                    
+            except Exception as load_error:
+                print(f"❌ Error loading vectorstore: {str(load_error)}")
+                return {
+                    "success": False,
+                    "error": f"Book {book_id} index not found. The book may not have been indexed yet. Please re-upload the book or wait for indexing to complete."
+                }
             
             # MMR retriever for diverse, relevant chunks
             # MMR = Maximal Marginal Relevance
@@ -217,18 +263,32 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
                 | StrOutputParser()
             )
             
-            # Generate answer
-            answer = rag_chain.invoke(question)
+            # Generate answer with error handling
+            print(f"🤖 Generating answer for question: {question[:50]}...")
+            try:
+                answer = rag_chain.invoke(question)
+                print(f"✓ Answer generated successfully")
+            except Exception as gen_error:
+                print(f"❌ Error generating answer: {str(gen_error)}")
+                return {
+                    "success": False,
+                    "error": f"Failed to generate answer. LLM error: {str(gen_error)}"
+                }
             
             # Get source chunks for transparency
-            retrieved_docs = retriever.invoke(question)
-            sources = [
-                {
-                    "page": doc.metadata.get('page', 'N/A'),
-                    "preview": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-                }
-                for doc in retrieved_docs
-            ]
+            try:
+                retrieved_docs = retriever.invoke(question)
+                sources = [
+                    {
+                        "page": doc.metadata.get('page', 'N/A'),
+                        "preview": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                    }
+                    for doc in retrieved_docs
+                ]
+            except Exception as retrieve_error:
+                print(f"⚠️ Could not retrieve source docs: {str(retrieve_error)}")
+                sources = []
+                retrieved_docs = []
             
             return {
                 "success": True,
@@ -239,6 +299,9 @@ Comprehensive Answer (combining book content and relevant knowledge):"""
             }
             
         except Exception as e:
+            print(f"❌ Query failed with exception: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": f"Query failed: {str(e)}"
