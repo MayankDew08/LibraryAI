@@ -3,16 +3,28 @@ RAG Endpoints for Library Management System
 Handles document Q&A and chat functionality
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.books import Books
 from app.services.rag_service import rag_service
 from pydantic import BaseModel
 from typing import Optional
-
+import time 
+import logging
+import os
+import datetime
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(lineno)d - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger=logging.getLogger('profiler')
+    
 
 
 class QueryRequest(BaseModel):
@@ -31,7 +43,7 @@ class QueryResponse(BaseModel):
 
 
 @router.post("/books/{book_id}/query")
-def query_book(
+async def query_book(
     book_id: int,
     request: QueryRequest,
     db: Session = Depends(get_db)
@@ -51,25 +63,34 @@ def query_book(
     }
     ```
     """
-    # Verify book exists
+    # Phase 1: Database verification
+    db_start = time.time()
     book = db.query(Books).filter(Books.book_id == book_id).first()
+    db_time = time.time() - db_start
+    
     if not book:
+        logger.warning(f"Book {book_id} not found - db_time={db_time:.4f}s")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Book with ID {book_id} not found"
         )
     
-    # Query RAG system
+    # Phase 2: RAG query
+    rag_start = time.time()
     num_chunks = request.num_chunks if request.num_chunks is not None else 5
-    result = rag_service.query_book(book_id, request.question, num_chunks)
+    result = await rag_service.query_book(book_id, request.question, num_chunks)
+    rag_time = time.time() - rag_start
     
     if not result["success"]:
+        logger.error(f"RAG query failed for book {book_id} - db_time={db_time:.4f}s rag_time={rag_time:.4f}s error={result['error']}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=result["error"]
         )
     
-    return {
+    # Phase 3: Response formatting
+    format_start = time.time()
+    response_data = {
         "book_id": book_id,
         "book_title": book.title,
         "author": book.author,
@@ -79,6 +100,13 @@ def query_book(
         "chunks_used": result["num_chunks_used"],
         "message": "Query successful - answer generated using RAG"
     }
+    format_time = time.time() - format_start
+    
+    # Log detailed profiling
+    total_time = db_time + rag_time + format_time
+    logger.info(f"RAG Query Profile - Book {book_id}: db={db_time:.4f}s rag={rag_time:.4f}s format={format_time:.4f}s total={total_time:.4f}s cache_hit={result.get('cached', False)}")
+    
+    return response_data
 
 
 @router.get("/books/{book_id}/index-status")
@@ -166,7 +194,7 @@ def reindex_book(book_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/books/{book_id}/index")
-def delete_book_index(book_id: int, db: Session = Depends(get_db)):
+async def delete_book_index(book_id: int, db: Session = Depends(get_db)):
     """
     Delete vector index for a book (cleanup when book is deleted)
     
@@ -181,8 +209,8 @@ def delete_book_index(book_id: int, db: Session = Depends(get_db)):
             detail=f"Book with ID {book_id} not found"
         )
     
-    # Delete index
-    result = rag_service.delete_book_index(book_id)
+    # Delete index (now async)
+    result = await rag_service.delete_book_index(book_id)
     
     if not result["success"]:
         raise HTTPException(

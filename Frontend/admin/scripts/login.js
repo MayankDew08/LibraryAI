@@ -6,6 +6,75 @@ const adminLoginForm = document.getElementById('adminLoginForm');
 const adminLoginButton = document.getElementById('adminLoginButton');
 const errorMessage = document.getElementById('errorMessage');
 
+// Request OTP
+async function requestOTP() {
+    const email = document.getElementById('email').value.trim();
+    
+    if (!email) {
+        showError('Please enter your email address');
+        return;
+    }
+
+    const otpButton = document.getElementById('getOtpButton');
+    if (!otpButton) {
+        console.error('OTP button not found');
+        return;
+    }
+
+    otpButton.disabled = true;
+    otpButton.textContent = 'Sending...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/otp/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                identifier: email
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Show success message
+            const errorMsg = document.getElementById('errorMessage');
+            const originalBg = errorMsg.style.backgroundColor;
+            errorMsg.textContent = '✓ OTP sent to your email!';
+            errorMsg.style.backgroundColor = '#10B981';
+            errorMsg.classList.add('show');
+            setTimeout(() => {
+                errorMsg.classList.remove('show');
+                errorMsg.style.backgroundColor = originalBg;
+            }, 5000);
+            
+            let countdown = 30;
+            otpButton.textContent = `Resend OTP (${countdown}s)`;
+            
+            const timer = setInterval(() => {
+                countdown--;
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    otpButton.disabled = false;
+                    otpButton.textContent = 'Get OTP';
+                } else {
+                    otpButton.textContent = `Resend OTP (${countdown}s)`;
+                }
+            }, 1000);
+        } else {
+            showError(data.detail || 'Failed to send OTP');
+            otpButton.disabled = false;
+            otpButton.textContent = 'Get OTP';
+        }
+    } catch (error) {
+        console.error('OTP error:', error);
+        showError('Connection error. Please try again.');
+        otpButton.disabled = false;
+        otpButton.textContent = 'Get OTP';
+    }
+}
+
 // Toggle password visibility
 function togglePassword(inputId) {
     const input = document.getElementById(inputId);
@@ -49,12 +118,20 @@ adminLoginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideError();
 
-    // Get password
+    // Get form data
+    const email = document.getElementById('email').value.trim();
+    const otp = document.getElementById('otp').value.trim();
     const password = document.getElementById('password').value;
 
-    // Validate input
-    if (!password) {
-        showError('Please enter admin password');
+    // Validate inputs
+    if (!email || !otp || !password) {
+        showError('Please fill in all fields');
+        return;
+    }
+
+    // Validate OTP format (6 digits)
+    if (!/^\d{6}$/.test(otp)) {
+        showError('OTP must be exactly 6 digits');
         return;
     }
 
@@ -65,12 +142,14 @@ adminLoginForm.addEventListener('submit', async (e) => {
 
     try {
         // Call admin login API
-        const response = await fetch(`${API_BASE_URL}/auth/admin-login`, {
+        const response = await fetch(`${API_BASE_URL}/auth/admin/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+                email: email,
+                otp: otp,
                 password: password
             })
         });
@@ -81,9 +160,19 @@ adminLoginForm.addEventListener('submit', async (e) => {
             // Admin login successful
             console.log('Admin login successful:', data);
             
+            // SECURITY: Clear any student session to prevent conflicts
+            localStorage.removeItem('student');
+            
             // Store admin session in localStorage
+            // Backend returns { message: "...", admin: { admin_id, name, email, role, access_token, token_type } }
+            const adminData = data.admin || data;
             localStorage.setItem('admin', JSON.stringify({
+                admin_id: adminData.admin_id,
+                name: adminData.name,
+                email: adminData.email,
                 role: 'admin',
+                access_token: adminData.access_token,
+                token_type: adminData.token_type || 'bearer',
                 access_granted: true,
                 login_time: new Date().toISOString()
             }));
@@ -115,8 +204,8 @@ adminLoginForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Auto-focus on password input
-document.getElementById('password').focus();
+// Auto-focus on email input
+document.getElementById('email').focus();
 
 // Add shake animation on error
 function shakeCard() {

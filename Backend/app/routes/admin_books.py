@@ -9,6 +9,7 @@ from app.models.admin import Admin
 from app.services.rag_service import rag_service
 from app.services.auth import get_current_admin
 
+
 router = APIRouter(prefix="/admin/books", tags=["admin-books"])
 
 
@@ -242,7 +243,7 @@ async def update_book(
 
 
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_book(
+async def delete_book(
     book_id: int,
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_admin)
@@ -252,9 +253,9 @@ def delete_book(
     if not book:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
     
-    # Delete RAG index first
+    # Delete RAG index first (now async)
     try:
-        rag_service.delete_book_index(book_id)
+        await rag_service.delete_book_index(book_id)
     except Exception as e:
         # Continue even if RAG deletion fails (index might not exist)
         pass

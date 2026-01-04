@@ -1,27 +1,90 @@
-# FastAPI Framework
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
+# ----------------------
+# Core API
+# ----------------------
+fastapi>=0.110
+uvicorn[standard]>=0.24
 
+# Config
+python-dotenv>=1.0
+
+# ----------------------
 # Database
-sqlalchemy==2.0.36
-mysqlclient==2.2.6
+# ----------------------
+sqlalchemy>=2.0
+mysqlclient>=2.2
 
-# Gemini AI (google-genai SDK - matches working Codes implementation)
-google-genai==0.3.0
+# ----------------------
+# Auth / Security
+# ----------------------
+# Pydantic EmailStr requires email-validator
+email-validator>=2.1
 
-# Text-to-Speech (Fast, offline TTS)
-pyttsx3==2.98
+# JWT + crypto
+python-jose[cryptography]>=3.3
+authlib>=1.3
 
-# PDF Processing
-PyMuPDF==1.25.2
+# Password hashing
+passlib[bcrypt]>=1.7
+bcrypt>=4.1
 
-# Authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.20
+# Multipart form/file uploads
+python-multipart>=0.0.9
 
-# Environment Variables
-python-dotenv==1.0.1
+# ----------------------
+# HTTP / Clients (FastAPI TestClient uses httpx)
+# ----------------------
+httpx>=0.25
 
-# Utilities
-httpx==0.28.1
+# ----------------------
+# Caching
+# ----------------------
+redis>=5.0
+
+# ----------------------
+# Email (OTP + notifications)
+# ----------------------
+sendgrid>=6.11
+
+# ----------------------
+# AI content generation (Hugging Face Inference API)
+# ----------------------
+huggingface-hub>=0.20
+PyPDF2>=3.0
+
+# ----------------------
+# Audio generation (offline TTS)
+# ----------------------
+pyttsx3>=2.90
+
+# ----------------------
+# PDF parsing
+# ----------------------
+# Used directly in some flows, and also indirectly by LangChain loaders.
+PyMuPDF>=1.23
+pypdf>=4.0
+
+# ----------------------
+# RAG stack (Chroma + LangChain + embeddings)
+# ----------------------
+chromadb>=0.5
+langchain-core>=0.2
+langchain-community>=0.2
+langchain-text-splitters>=0.2
+langchain-huggingface>=0.1
+langchain-google-genai>=1.0
+sentence-transformers>=2.7
+
+# NOTE: sentence-transformers depends on torch.
+# On Windows, torch installation can be heavyweight and may require
+# choosing the right build for your CPU/GPU.
+# If pip doesn't pull it cleanly for you, install torch separately.
+
+# ----------------------
+# Load testing
+# ----------------------
+locust>=2.0
+
+# ----------------------
+# Tests
+# ----------------------
+pytest>=7.0

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Gemini AI Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "REDACTED_GOOGLE_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Hugging Face Configuration
 HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")

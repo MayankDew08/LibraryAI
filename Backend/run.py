@@ -1,10 +1,16 @@
-# Run the FastAPI server
+"""Convenience entrypoint for local development.
+
+Equivalent to:
+  uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+"""
+
 import uvicorn
+
 
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="127.0.0.1",
         port=8000,
-        reload=True
+        reload=True,
     )

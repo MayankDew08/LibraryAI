@@ -3,14 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Admin Dashboard - LibraryAI</title>
     <link rel="stylesheet" href="../../shared/styles/landing.css">
     <link rel="stylesheet" href="../styles/dashboard.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- SECURITY: Hide everything until auth is verified -->
+    <style>
+        body { visibility: hidden; opacity: 0; }
+        body.authenticated { visibility: visible; opacity: 1; transition: opacity 0.3s ease; }
+    </style>
+    <!-- SECURITY: Immediate auth check before page renders -->
+    <script>
+        (function() {
+            // CRITICAL: Clear student session when on admin pages
+            localStorage.removeItem('student');
+            
+            const admin = JSON.parse(localStorage.getItem('admin') || '{}');
+            // Must have access_token AND role must be 'admin'
+            if (!admin.access_token || admin.role !== 'admin') {
+                localStorage.removeItem('admin'); // Clear invalid session
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
 </head>
 <body>
+    <!-- SECURITY: Redirect if JavaScript is disabled -->
+    <noscript>
+        <meta http-equiv="refresh" content="0;url=login.html">
+        <style>body { visibility: visible !important; }</style>
+        <div style="padding: 50px; text-align: center; font-family: sans-serif;">
+            <h1>JavaScript Required</h1>
+            <p>Please enable JavaScript to access the admin dashboard.</p>
+            <a href="login.html">Go to Login</a>
+        </div>
+    </noscript>
     <!-- Background -->
     <div class="background-slider">
         <div class="slide active" style="background-image: url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=2070')"></div>
@@ -151,6 +183,67 @@
                 </div>
             </div>
 
+            <!-- Analytics Section -->
+            <div class="analytics-section">
+                <h2>Library Analytics</h2>
+                
+                <div class="analytics-grid">
+                    <!-- Category Distribution -->
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h3>📚 Books by Category</h3>
+                            <span class="analytics-badge" id="categoryCount">0 categories</span>
+                        </div>
+                        <div class="chart-container" id="categoryChart"></div>
+                    </div>
+
+                    <!-- Borrow Status -->
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h3>📊 Borrow Status Distribution</h3>
+                            <span class="analytics-badge" id="borrowTotal">0 total</span>
+                        </div>
+                        <div class="chart-container" id="borrowStatusChart"></div>
+                    </div>
+
+                    <!-- Top Borrowed Books -->
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h3>🔥 Most Borrowed Books</h3>
+                            <span class="analytics-badge" id="topBooksCount">Top 5</span>
+                        </div>
+                        <div class="top-items-list" id="topBooksList"></div>
+                    </div>
+
+                    <!-- Fine Analytics -->
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h3>💰 Fine Collection Insights</h3>
+                            <span class="analytics-badge" id="fineInsights">₹0 collected</span>
+                        </div>
+                        <div class="fine-stats-grid" id="fineStatsGrid"></div>
+                    </div>
+
+                    <!-- Availability Status -->
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h3>📖 Book Availability</h3>
+                            <span class="analytics-badge" id="availabilityRate">0%</span>
+                        </div>
+                        <div class="availability-chart" id="availabilityChart"></div>
+                    </div>
+
+                    <!-- Recent Trends -->
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h3>📈 Borrowing Trends</h3>
+                            <span class="analytics-badge" id="trendIndicator">This month</span>
+                        </div>
+                        <div class="trend-container" id="trendContainer"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="recent-activity">
                 <h2>Quick Actions</h2>
                 <div class="quick-actions-grid">
@@ -210,19 +303,25 @@
                         </div>
 
                         <div class="form-group">
-                            <label>Book Visibility *</label>
-                            <div class="radio-group">
-                                <label class="radio-label">
-                                    <input type="radio" name="visibility" value="public" checked>
-                                    <span>Public (Generate all content)</span>
-                                </label>
-                                <label class="radio-label">
-                                    <input type="radio" name="visibility" value="confidential">
-                                    <span>Confidential (Quick add only)</span>
-                                </label>
-                            </div>
-                            <small class="form-hint">Confidential books won't generate summaries, Q&A, or podcasts</small>
+                            <label for="bookCategories">Categories *</label>
+                            <input type="text" id="bookCategories" name="categories" required placeholder="e.g., Fiction, Science, History">
+                            <small class="form-hint">Enter comma-separated categories</small>
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Book Visibility *</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="visibility" value="public" checked>
+                                <span>Public (Generate AI Content)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="visibility" value="confidential">
+                                <span>Confidential (RAG Only)</span>
+                            </label>
+                        </div>
+                        <small class="form-hint">Public: Generates Summary, Q&A, Podcast (~2-3 min). Confidential: Only RAG indexing for chat (~30 sec). Both options enable RAG chat functionality.</small>
                     </div>
 
                     <div class="form-row">

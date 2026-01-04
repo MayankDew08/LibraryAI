@@ -227,6 +227,52 @@ body {
     margin-top: -0.25rem;
 }
 
+/* OTP Button */
+.get-otp-button,
+.otp-button {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.get-otp-button:hover,
+.otp-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.get-otp-button:active,
+.otp-button:active {
+    transform: translateY(0);
+}
+
+.get-otp-button:disabled,
+.otp-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.admin-theme .get-otp-button,
+.admin-theme .otp-button {
+    background: linear-gradient(135deg, var(--secondary) 0%, #DB2777 100%);
+    box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
+}
+
+.admin-theme .get-otp-button:hover,
+.admin-theme .otp-button:hover {
+    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
+}
+
 /* Form Options */
 .form-options {
     display: flex;

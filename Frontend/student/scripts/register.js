@@ -7,6 +7,49 @@ const registerButton = document.getElementById('registerButton');
 const errorMessage = document.getElementById('errorMessage');
 const successMessage = document.getElementById('successMessage');
 
+// Request OTP
+async function requestOTP() {
+    const email = document.getElementById('email').value.trim();
+    
+    if (!email) {
+        showError('Please enter your email first');
+        return;
+    }
+    
+    const otpButton = document.getElementById('getOtpButton');
+    otpButton.disabled = true;
+    otpButton.textContent = 'Sending...';
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/otp/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ identifier: email })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showSuccess('OTP sent to your email! Check your inbox.');
+            otpButton.textContent = 'Resend OTP';
+            // Re-enable after 30 seconds
+            setTimeout(() => {
+                otpButton.disabled = false;
+            }, 30000);
+        } else {
+            showError(data.detail || 'Failed to send OTP');
+            otpButton.disabled = false;
+            otpButton.textContent = 'Get OTP';
+        }
+    } catch (error) {
+        showError('Network error. Please check your connection.');
+        otpButton.disabled = false;
+        otpButton.textContent = 'Get OTP';
+    }
+}
+
 // Toggle password visibility
 function togglePassword(inputId) {
     const input = document.getElementById(inputId);
@@ -75,16 +118,23 @@ registerForm.addEventListener('submit', async (e) => {
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
+    const otp = document.getElementById('otp').value.trim();
     const termsAccepted = document.getElementById('terms').checked;
 
     // Validate inputs
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name || !email || !password || !confirmPassword || !otp) {
         showError('Please fill in all fields');
         return;
     }
 
     if (!termsAccepted) {
         showError('Please accept the Terms & Conditions');
+        return;
+    }
+
+    // Validate OTP
+    if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+        showError('OTP must be exactly 6 digits');
         return;
     }
 
@@ -108,7 +158,7 @@ registerForm.addEventListener('submit', async (e) => {
 
     try {
         // Call register API
-        const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        const response = await fetch(`${API_BASE_URL}/auth/student/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -117,7 +167,7 @@ registerForm.addEventListener('submit', async (e) => {
                 name: name,
                 email: email,
                 password: password,
-                role: 'student' // Default role for student registration
+                otp: otp
             })
         });
 

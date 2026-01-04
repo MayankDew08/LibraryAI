@@ -6,6 +6,75 @@ const loginForm = document.getElementById('loginForm');
 const loginButton = document.getElementById('loginButton');
 const errorMessage = document.getElementById('errorMessage');
 
+// Request OTP
+async function requestOTP() {
+    const email = document.getElementById('email').value.trim();
+    
+    if (!email) {
+        showError('Please enter your email address');
+        return;
+    }
+
+    const otpButton = document.getElementById('getOtpButton');
+    if (!otpButton) {
+        console.error('OTP button not found');
+        return;
+    }
+
+    otpButton.disabled = true;
+    otpButton.textContent = 'Sending...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/otp/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                identifier: email
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Show success message
+            const errorMsg = document.getElementById('errorMessage');
+            const originalBg = errorMsg.style.backgroundColor;
+            errorMsg.textContent = '✓ OTP sent to your email!';
+            errorMsg.style.backgroundColor = '#10B981';
+            errorMsg.classList.add('show');
+            setTimeout(() => {
+                errorMsg.classList.remove('show');
+                errorMsg.style.backgroundColor = originalBg;
+            }, 5000);
+            
+            let countdown = 30;
+            otpButton.textContent = `Resend OTP (${countdown}s)`;
+            
+            const timer = setInterval(() => {
+                countdown--;
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    otpButton.disabled = false;
+                    otpButton.textContent = 'Get OTP';
+                } else {
+                    otpButton.textContent = `Resend OTP (${countdown}s)`;
+                }
+            }, 1000);
+        } else {
+            showError(data.detail || 'Failed to send OTP');
+            otpButton.disabled = false;
+            otpButton.textContent = 'Get OTP';
+        }
+    } catch (error) {
+        console.error('OTP error:', error);
+        showError('Connection error. Please try again.');
+        otpButton.disabled = false;
+        otpButton.textContent = 'Get OTP';
+    }
+}
+
 // Toggle password visibility
 function togglePassword(inputId) {
     const input = document.getElementById(inputId);
@@ -51,11 +120,18 @@ loginForm.addEventListener('submit', async (e) => {
 
     // Get form data
     const email = document.getElementById('email').value.trim();
+    const otp = document.getElementById('otp').value.trim();
     const password = document.getElementById('password').value;
 
     // Validate inputs
-    if (!email || !password) {
+    if (!email || !otp || !password) {
         showError('Please fill in all fields');
+        return;
+    }
+
+    // Validate OTP format (6 digits)
+    if (!/^\d{6}$/.test(otp)) {
+        showError('OTP must be exactly 6 digits');
         return;
     }
 
@@ -66,13 +142,14 @@ loginForm.addEventListener('submit', async (e) => {
 
     try {
         // Call login API
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        const response = await fetch(`${API_BASE_URL}/auth/student/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 email: email,
+                otp: otp,
                 password: password
             })
         });
@@ -83,12 +160,19 @@ loginForm.addEventListener('submit', async (e) => {
             // Login successful
             console.log('Login successful:', data);
             
+            // SECURITY: Clear any admin session to prevent conflicts
+            localStorage.removeItem('admin');
+            
             // Store user data in localStorage for dashboard access
+            // Backend returns { message: "...", user: { user_id, name, email, role, access_token, token_type } }
+            const userData = data.user || data;
             localStorage.setItem('student', JSON.stringify({
-                user_id: data.user_id,
-                name: data.name,
-                email: data.email,
-                role: data.role
+                user_id: userData.user_id,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role || 'student',
+                access_token: userData.access_token,
+                token_type: userData.token_type || 'bearer'
             }));
 
             // Show success and redirect

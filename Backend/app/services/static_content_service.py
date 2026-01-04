@@ -6,6 +6,9 @@ from app.models.static_content import StaticContent
 from app.services.gemini_ai import generate_all_content
 from app.services.audio_generation import generate_podcast_audio
 import os
+import redis
+
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
 
 def create_static_content(db: Session, book_id: int, pdf_path: str) -> StaticContent:
@@ -39,9 +42,18 @@ def create_static_content(db: Session, book_id: int, pdf_path: str) -> StaticCon
             audio_url=audio_url
         )
         
-        db.add(new_content)
         db.commit()
         db.refresh(new_content)
+        
+        # Invalidate cache for this book's static content
+        summary_cache_key = f"summary_{book_id}"
+        qa_cache_key = f"qa_{book_id}"
+        podcast_cache_key = f"podcast_{book_id}"
+        audio_cache_key = f"audio_url_{book_id}"
+        redis_client.delete(summary_cache_key)
+        redis_client.delete(qa_cache_key)
+        redis_client.delete(podcast_cache_key)
+        redis_client.delete(audio_cache_key)
         
         return new_content
         
@@ -84,6 +96,16 @@ def regenerate_static_content(db: Session, book_id: int, pdf_path: str) -> Stati
         
         db.commit()
         db.refresh(content)
+        
+        # Invalidate cache for this book's static content
+        summary_cache_key = f"summary_{book_id}"
+        qa_cache_key = f"qa_{book_id}"
+        podcast_cache_key = f"podcast_{book_id}"
+        audio_cache_key = f"audio_url_{book_id}"
+        redis_client.delete(summary_cache_key)
+        redis_client.delete(qa_cache_key)
+        redis_client.delete(podcast_cache_key)
+        redis_client.delete(audio_cache_key)
         
         return content
         

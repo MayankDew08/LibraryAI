@@ -4,9 +4,19 @@ let studentEmail = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // SECURITY: Always clear admin session on student pages
+    localStorage.removeItem('admin');
+    
     // Get student info from localStorage
     const studentData = JSON.parse(localStorage.getItem('student') || '{}');
-    studentEmail = studentData.email || 'student@example.com';
+    
+    // SECURITY: Redirect to login if not authenticated
+    if (!studentData.email) {
+        window.location.replace('login.html');
+        return;
+    }
+    
+    studentEmail = studentData.email;
     
     // Update student name in header
     if (studentData.name) {
@@ -89,6 +99,35 @@ async function searchBooks(title) {
     }
 }
 
+// Handle Logout
+async function handleLogout() {
+    try {
+        // Check if user has any borrowed books
+        const response = await fetch(`${API_BASE_URL}/borrow/user/email/${encodeURIComponent(studentEmail)}`);
+        
+        if (response.ok) {
+            const borrows = await response.json();
+            const activeBorrows = borrows.filter(b => b.status === 'BORROWED');
+            
+            if (activeBorrows.length > 0) {
+                alert(`You cannot logout! You have ${activeBorrows.length} borrowed book(s) that need to be returned first.\n\nPlease return all books before logging out.`);
+                return;
+            }
+        }
+        
+        // No borrowed books, allow logout
+        localStorage.removeItem('student');
+        window.location.href = '../../index.html';
+    } catch (error) {
+        console.error('Error checking borrowed books:', error);
+        // On error, still allow logout but warn user
+        if (confirm('Could not verify borrowed books. Do you still want to logout?')) {
+            localStorage.removeItem('student');
+            window.location.href = '../../index.html';
+        }
+    }
+}
+
 // Load Library
 async function loadLibrary() {
     const container = document.getElementById('booksContainer');
@@ -131,6 +170,11 @@ function displayBooks(books) {
             <div class="book-info">
                 <h3>${book.title}</h3>
                 <p class="book-author">${book.author}</p>
+                ${book.categories && book.categories.length > 0 ? `
+                    <div class="book-categories">
+                        ${book.categories.map(cat => `<span class="category-tag">${cat}</span>`).join('')}
+                    </div>
+                ` : ''}
                 <p><strong>Available:</strong> ${book.available_copies} / ${book.total_copies}</p>
                 <span class="availability-badge ${book.available_copies > 0 ? 'available' : 'unavailable'}">
                     ${book.available_copies > 0 ? '✓ Available' : '✗ Unavailable'}
@@ -159,6 +203,18 @@ async function openBookDetail(bookId) {
         // Update modal header
         document.getElementById('detailTitle').textContent = book.title;
         document.getElementById('detailAuthor').textContent = book.author;
+        
+        // Update categories
+        const categoriesContainer = document.getElementById('detailCategories');
+        if (book.categories && book.categories.length > 0) {
+            categoriesContainer.innerHTML = book.categories.map(cat => 
+                `<span class="category-tag">${cat}</span>`
+            ).join('');
+            categoriesContainer.style.display = 'flex';
+        } else {
+            categoriesContainer.style.display = 'none';
+        }
+        
         document.getElementById('detailAvailability').textContent = `Available: ${book.available_copies} / ${book.total_copies}`;
         
         if (book.cover_image) {
@@ -264,25 +320,62 @@ async function loadSummary(bookId) {
     const content = document.getElementById('summaryContent');
     
     loading.style.display = 'flex';
+    loading.querySelector('p').textContent = 'Loading summary...';
     content.classList.remove('loaded');
     
     try {
         const response = await fetch(`${API_BASE_URL}/student/books/${bookId}/summary`);
         
         if (!response.ok) {
-            throw new Error('Summary not available for this book');
+            const errorData = await response.json().catch(() => ({}));
+            
+            // Check if content is missing and book is public
+            if (response.status === 404 || errorData.detail?.includes('not available')) {
+                // Get book info to check if public
+                const booksResponse = await fetch(`${API_BASE_URL}/student/books/`);
+                const books = await booksResponse.json();
+                const book = books.find(b => b.book_id === bookId);
+                
+                if (book && book.is_public === 1) {
+                    // Show generate button for public books
+                    content.innerHTML = `
+                        <div class="confidential-notice">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 2v20m10-10H2" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <h3>Summary Not Generated Yet</h3>
+                            <p>Click below to generate the summary for this book. This may take 1-2 minutes.</p>
+                            <button onclick="generateSummary(${bookId})" class="btn-primary" style="margin-top: 1rem;">
+                                Generate Summary
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // Confidential book - cannot generate
+                    content.innerHTML = `
+                        <div class="confidential-notice">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <h3>Confidential Content</h3>
+                            <p>This book is confidential. Summary is not available.</p>
+                        </div>
+                    `;
+                }
+                content.classList.add('loaded');
+                loading.style.display = 'none';
+                return;
+            }
+            
+            throw new Error(errorData.detail || 'Summary not available');
         }
         
         const data = await response.json();
         
         if (data.summary_text) {
-            // Display text with preserved formatting
-            const textContent = document.createElement('div');
-            textContent.className = 'formatted-content';
-            textContent.style.whiteSpace = 'pre-wrap';
-            textContent.textContent = data.summary_text;
-            content.innerHTML = '';
-            content.appendChild(textContent);
+            // Parse and display summary with beautiful formatting
+            const summaryHTML = parseSummaryText(data.summary_text);
+            content.innerHTML = summaryHTML;
             content.classList.add('loaded');
         }
         loading.style.display = 'none';
@@ -293,8 +386,56 @@ async function loadSummary(bookId) {
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
                     <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
                 </svg>
-                <h3>Content Not Available</h3>
-                <p>This book was uploaded as confidential or content hasn't been generated yet. Summary is not available.</p>
+                <h3>Error Loading Summary</h3>
+                <p>${error.message}</p>
+                <button onclick="loadSummary(${bookId})" class="btn-primary" style="margin-top: 1rem;">Retry</button>
+            </div>
+        `;
+        content.classList.add('loaded');
+        loading.style.display = 'none';
+    }
+}
+
+// Generate Summary (called by button)
+async function generateSummary(bookId) {
+    const loading = document.querySelector('#summary-tab .content-loading');
+    const content = document.getElementById('summaryContent');
+    
+    loading.style.display = 'flex';
+    loading.querySelector('p').textContent = 'Generating summary... This may take 1-2 minutes';
+    content.classList.remove('loaded');
+    content.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/student/generate/books/${bookId}/summary`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            if (response.status === 403) {
+                throw new Error('This book is confidential. Cannot generate AI content.');
+            } else if (response.status === 429) {
+                throw new Error('API quota exhausted. Please try again in 24 hours or contact admin.');
+            }
+            throw new Error(errorData.detail || 'Failed to generate summary');
+        }
+        
+        const data = await response.json();
+        alert('Summary generated successfully!');
+        
+        // Reload the summary
+        loadSummary(bookId);
+    } catch (error) {
+        console.error('Error generating summary:', error);
+        content.innerHTML = `
+            <div class="confidential-notice">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <h3>Generation Failed</h3>
+                <p>${error.message}</p>
+                <button onclick="generateSummary(${bookId})" class="btn-primary" style="margin-top: 1rem;">Try Again</button>
             </div>
         `;
         content.classList.add('loaded');
@@ -308,13 +449,54 @@ async function loadQA(bookId) {
     const content = document.getElementById('qaContent');
     
     loading.style.display = 'flex';
+    loading.querySelector('p').textContent = 'Loading Q&A...';
     content.classList.remove('loaded');
     
     try {
         const response = await fetch(`${API_BASE_URL}/student/books/${bookId}/qa`);
         
         if (!response.ok) {
-            throw new Error('Q&A not available for this book');
+            const errorData = await response.json().catch(() => ({}));
+            
+            // Check if content is missing and book is public
+            if (response.status === 404 || errorData.detail?.includes('not available')) {
+                // Get book info to check if public
+                const booksResponse = await fetch(`${API_BASE_URL}/student/books/`);
+                const books = await booksResponse.json();
+                const book = books.find(b => b.book_id === bookId);
+                
+                if (book && book.is_public === 1) {
+                    // Show generate button for public books
+                    content.innerHTML = `
+                        <div class="confidential-notice">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 2v20m10-10H2" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <h3>Q&A Not Generated Yet</h3>
+                            <p>Click below to generate Q&A for this book. This may take 1-2 minutes.</p>
+                            <button onclick="generateQA(${bookId})" class="btn-primary" style="margin-top: 1rem;">
+                                Generate Q&A
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // Confidential book - cannot generate
+                    content.innerHTML = `
+                        <div class="confidential-notice">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <h3>Confidential Content</h3>
+                            <p>This book is confidential. Q&A is not available.</p>
+                        </div>
+                    `;
+                }
+                content.classList.add('loaded');
+                loading.style.display = 'none';
+                return;
+            }
+            
+            throw new Error(errorData.detail || 'Q&A not available');
         }
         
         const data = await response.json();
@@ -323,17 +505,6 @@ async function loadQA(bookId) {
             // Parse Q&A text into structured format
             const qaHTML = parseQAText(data.qa_json);
             content.innerHTML = qaHTML;
-            content.classList.add('loaded');
-        } else {
-            content.innerHTML = `
-                <div class="confidential-notice">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-                        <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                    <h3>Confidential Content</h3>
-                    <p>This book was uploaded as confidential. Q&A is not available.</p>
-                </div>
-            `;
             content.classList.add('loaded');
         }
         loading.style.display = 'none';
@@ -344,8 +515,56 @@ async function loadQA(bookId) {
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
                     <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
                 </svg>
-                <h3>Content Not Available</h3>
-                <p>This book was uploaded as confidential or content hasn't been generated yet. Q&A is not available.</p>
+                <h3>Error Loading Q&A</h3>
+                <p>${error.message}</p>
+                <button onclick="loadQA(${bookId})" class="btn-primary" style="margin-top: 1rem;">Retry</button>
+            </div>
+        `;
+        content.classList.add('loaded');
+        loading.style.display = 'none';
+    }
+}
+
+// Generate Q&A (called by button)
+async function generateQA(bookId) {
+    const loading = document.querySelector('#qa-tab .content-loading');
+    const content = document.getElementById('qaContent');
+    
+    loading.style.display = 'flex';
+    loading.querySelector('p').textContent = 'Generating Q&A... This may take 1-2 minutes';
+    content.classList.remove('loaded');
+    content.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/student/generate/books/${bookId}/qa`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            if (response.status === 403) {
+                throw new Error('This book is confidential. Cannot generate AI content.');
+            } else if (response.status === 429) {
+                throw new Error('API quota exhausted. Please try again in 24 hours or contact admin.');
+            }
+            throw new Error(errorData.detail || 'Failed to generate Q&A');
+        }
+        
+        const data = await response.json();
+        alert('Q&A generated successfully!');
+        
+        // Reload the Q&A
+        loadQA(bookId);
+    } catch (error) {
+        console.error('Error generating Q&A:', error);
+        content.innerHTML = `
+            <div class="confidential-notice">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <h3>Generation Failed</h3>
+                <p>${error.message}</p>
+                <button onclick="generateQA(${bookId})" class="btn-primary" style="margin-top: 1rem;">Try Again</button>
             </div>
         `;
         content.classList.add('loaded');
@@ -360,16 +579,28 @@ function parseQAText(qaText) {
     try {
         const qaArray = JSON.parse(qaText);
         if (Array.isArray(qaArray)) {
-            return qaArray.map(qa => {
+            let html = '<div class="qa-container">';
+            qaArray.forEach((qa, index) => {
                 const question = qa.question || qa.Q || '';
                 const answer = qa.answer || qa.A || '';
-                return `
+                html += `
                     <div class="qa-item">
-                        <div class="question"><strong>Q:</strong> ${escapeHtml(question)}</div>
-                        <div class="answer"><strong>A:</strong> ${escapeHtml(answer)}</div>
+                        <div class="qa-number">${index + 1}</div>
+                        <div class="qa-content">
+                            <div class="question">
+                                <span class="qa-label">Q:</span>
+                                <span class="qa-text">${escapeHtml(question)}</span>
+                            </div>
+                            <div class="answer">
+                                <span class="qa-label">A:</span>
+                                <span class="qa-text">${escapeHtml(answer)}</span>
+                            </div>
+                        </div>
                     </div>
                 `;
-            }).join('');
+            });
+            html += '</div>';
+            return html;
         }
     } catch (e) {
         // Not JSON, parse as text
@@ -441,8 +672,73 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Load Audio
-async function loadAudio(bookId) {
+// Parse and format summary with sections
+function parseSummaryText(summaryText) {
+    if (!summaryText) return '';
+    
+    // Replace **Section Title** with formatted headers
+    let html = '<div class="summary-container">';
+    
+    // Split by markdown-style headers
+    const lines = summaryText.split('\n');
+    let currentSection = '';
+    let sectionContent = '';
+    
+    lines.forEach(line => {
+        // Check for **Header** format
+        const headerMatch = line.match(/^\*\*(.+?)\*\*$/);
+        if (headerMatch) {
+            // Save previous section
+            if (currentSection && sectionContent) {
+                html += formatSummarySection(currentSection, sectionContent);
+            }
+            currentSection = headerMatch[1];
+            sectionContent = '';
+        } else if (line.trim()) {
+            sectionContent += line + '\n';
+        }
+    });
+    
+    // Add last section
+    if (currentSection && sectionContent) {
+        html += formatSummarySection(currentSection, sectionContent);
+    }
+    
+    // If no sections found, display as formatted text
+    if (html === '<div class="summary-container">') {
+        html += `<div class="summary-section"><div class="section-content">${escapeHtml(summaryText).replace(/\n/g, '<br>')}</div></div>`;
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+// Format individual summary section
+function formatSummarySection(title, content) {
+    const formattedContent = content.trim()
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => {
+            line = line.trim();
+            // Check if it's a numbered point
+            if (/^\d+\./.test(line)) {
+                return `<div class="summary-point">${escapeHtml(line)}</div>`;
+            }
+            return `<p>${escapeHtml(line)}</p>`;
+        })
+        .join('');
+    
+    return `
+        <div class="summary-section">
+            <div class="section-title">
+                <span class="section-icon">📖</span>
+                <h3>${escapeHtml(title)}</h3>
+            </div>
+            <div class="section-content">
+                ${formattedContent}
+            </div>
+        </div>
+    `;
 }
 
 // Load Audio
@@ -451,13 +747,54 @@ async function loadAudio(bookId) {
     const content = document.getElementById('audioContent');
     
     loading.style.display = 'flex';
+    loading.querySelector('p').textContent = 'Loading podcast...';
     content.classList.remove('loaded');
     
     try {
         const response = await fetch(`${API_BASE_URL}/student/books/${bookId}/audio`);
         
         if (!response.ok) {
-            throw new Error('Audio not available for this book');
+            const errorData = await response.json().catch(() => ({}));
+            
+            // Check if content is missing and book is public
+            if (response.status === 404 || errorData.detail?.includes('not available')) {
+                // Get book info to check if public
+                const booksResponse = await fetch(`${API_BASE_URL}/student/books/`);
+                const books = await booksResponse.json();
+                const book = books.find(b => b.book_id === bookId);
+                
+                if (book && book.is_public === 1) {
+                    // Show generate button for public books
+                    content.innerHTML = `
+                        <div class="confidential-notice">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 2v20m10-10H2" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <h3>Podcast Not Generated Yet</h3>
+                            <p>Click below to generate the podcast for this book. This may take 2-3 minutes.</p>
+                            <button onclick="generateAudio(${bookId})" class="btn-primary" style="margin-top: 1rem;">
+                                Generate Podcast
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // Confidential book - cannot generate
+                    content.innerHTML = `
+                        <div class="confidential-notice">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            <h3>Confidential Content</h3>
+                            <p>This book is confidential. Podcast audio is not available.</p>
+                        </div>
+                    `;
+                }
+                content.classList.add('loaded');
+                loading.style.display = 'none';
+                return;
+            }
+            
+            throw new Error(errorData.detail || 'Audio not available');
         }
         
         const data = await response.json();
@@ -471,17 +808,6 @@ async function loadAudio(bookId) {
                 </audio>
             `;
             content.classList.add('loaded');
-        } else {
-            content.innerHTML = `
-                <div class="confidential-notice">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-                        <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                    <h3>Confidential Content</h3>
-                    <p>This book was uploaded as confidential. Podcast audio is not available.</p>
-                </div>
-            `;
-            content.classList.add('loaded');
         }
         loading.style.display = 'none';
     } catch (error) {
@@ -491,8 +817,56 @@ async function loadAudio(bookId) {
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
                     <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
                 </svg>
-                <h3>Content Not Available</h3>
-                <p>This book was uploaded as confidential or content hasn't been generated yet. Podcast audio is not available.</p>
+                <h3>Error Loading Podcast</h3>
+                <p>${error.message}</p>
+                <button onclick="loadAudio(${bookId})" class="btn-primary" style="margin-top: 1rem;">Retry</button>
+            </div>
+        `;
+        content.classList.add('loaded');
+        loading.style.display = 'none';
+    }
+}
+
+// Generate Audio (called by button)
+async function generateAudio(bookId) {
+    const loading = document.querySelector('#audio-tab .content-loading');
+    const content = document.getElementById('audioContent');
+    
+    loading.style.display = 'flex';
+    loading.querySelector('p').textContent = 'Generating podcast... This may take 2-3 minutes';
+    content.classList.remove('loaded');
+    content.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/student/generate/books/${bookId}/podcast`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            if (response.status === 403) {
+                throw new Error('This book is confidential. Cannot generate AI content.');
+            } else if (response.status === 429) {
+                throw new Error('API quota exhausted. Please try again in 24 hours or contact admin.');
+            }
+            throw new Error(errorData.detail || 'Failed to generate podcast');
+        }
+        
+        const data = await response.json();
+        alert('Podcast generated successfully!');
+        
+        // Reload the audio
+        loadAudio(bookId);
+    } catch (error) {
+        console.error('Error generating podcast:', error);
+        content.innerHTML = `
+            <div class="confidential-notice">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 15v2m0-6v2m0-10C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <h3>Generation Failed</h3>
+                <p>${error.message}</p>
+                <button onclick="generateAudio(${bookId})" class="btn-primary" style="margin-top: 1rem;">Try Again</button>
             </div>
         `;
         content.classList.add('loaded');
@@ -569,9 +943,36 @@ function addChatMessage(message, type, id = null) {
     messageDiv.className = `chat-message ${type}`;
     if (id) messageDiv.setAttribute('data-id', id);
     
-    // Display all messages as plain text with preserved formatting
-    messageDiv.style.whiteSpace = 'pre-wrap';
-    messageDiv.textContent = message;
+    // Format bot responses with better styling
+    if (type === 'bot') {
+        // Convert markdown-like formatting to HTML
+        let formattedMessage = message
+            // Bold text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // Italic text
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // Bullet points
+            .replace(/^[\-•]\s(.+)$/gm, '<li>$1</li>')
+            // Numbered lists
+            .replace(/^\d+\.\s(.+)$/gm, '<li>$1</li>')
+            // Headers
+            .replace(/^###\s(.+)$/gm, '<h4>$1</h4>')
+            .replace(/^##\s(.+)$/gm, '<h3>$1</h3>')
+            // Line breaks
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>');
+        
+        // Wrap list items in ul if present
+        if (formattedMessage.includes('<li>')) {
+            formattedMessage = formattedMessage.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+        }
+        
+        messageDiv.innerHTML = `<p>${formattedMessage}</p>`;
+    } else {
+        // User messages as plain text
+        messageDiv.style.whiteSpace = 'pre-wrap';
+        messageDiv.textContent = message;
+    }
     
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -692,15 +1093,29 @@ async function loadMyBooks() {
     container.innerHTML = '<div class="content-loading"><div class="spinner"></div><p>Loading your books...</p></div>';
     
     if (!studentEmail) {
+        console.error('Student email not found in localStorage');
         container.innerHTML = '<div class="empty-state"><h3>Please log in</h3><p>You need to log in to view your borrowed books</p></div>';
         return;
     }
     
+    console.log('Loading borrowed books for:', studentEmail);
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/borrow/user/email/${studentEmail}`);
-        const borrows = await response.json();
+        const url = `${API_BASE_URL}/borrow/user/email/${encodeURIComponent(studentEmail)}`;
+        console.log('Fetching from:', url);
         
-        if (borrows.length === 0) {
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error:', response.status, errorText);
+            throw new Error(`Failed to load borrowed books: ${response.status} ${errorText}`);
+        }
+        
+        const borrows = await response.json();
+        console.log('Borrowed books:', borrows);
+        
+        if (!Array.isArray(borrows) || borrows.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
@@ -725,20 +1140,40 @@ async function loadMyBooks() {
                         <th>Return Date</th>
                         <th>Fine</th>
                         <th>Status</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${borrows.map(borrow => `
+                    ${borrows.map(borrow => {
+                        const isReturnable = !borrow.return_date && (borrow.status === 'ACTIVE' || borrow.status === 'OVERDUE');
+                        const isOverdue = !borrow.return_date && new Date(borrow.due_date) < new Date();
+                        const statusClass = borrow.status === 'RETURNED' ? 'returned' : isOverdue ? 'overdue' : 'active';
+                        const statusText = borrow.return_date ? 'RETURNED' : isOverdue ? 'OVERDUE' : 'ACTIVE';
+                        
+                        return `
                         <tr>
-                            <td>${borrow.book_title}</td>
+                            <td><strong>${borrow.book_title}</strong></td>
                             <td>${borrow.author}</td>
-                            <td>${new Date(borrow.borrowed_date).toLocaleDateString()}</td>
-                            <td>${new Date(borrow.due_date).toLocaleDateString()}</td>
-                            <td>${borrow.return_date ? new Date(borrow.return_date).toLocaleDateString() : '-'}</td>
-                            <td>${borrow.fine_amount > 0 ? '₹' + borrow.fine_amount : '-'}</td>
-                            <td><span class="status-badge ${borrow.status.toLowerCase()}">${borrow.status}</span></td>
+                            <td>${new Date(borrow.borrowed_date).toLocaleDateString('en-IN')}</td>
+                            <td>${new Date(borrow.due_date).toLocaleDateString('en-IN')}</td>
+                            <td>${borrow.return_date ? new Date(borrow.return_date).toLocaleDateString('en-IN') : '<span style="color: rgba(255,255,255,0.5);">Not Returned</span>'}</td>
+                            <td>${borrow.fine_amount > 0 ? '<strong style="color: #EC4899;">₹' + borrow.fine_amount + '</strong>' : '-'}</td>
+                            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                            <td>
+                                ${isReturnable ? `
+                                    <button class="return-book-btn" onclick="returnBook('${borrow.book_title.replace(/'/g, "\\'")}')">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                            <path d="M9 11l3 3L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
+                                        Return Book
+                                    </button>
+                                ` : borrow.return_date && borrow.fine_amount > 0 ? 
+                                    '<span style="color: #F59E0B; font-size: 0.85rem;">⏳ Awaiting Admin Verification</span>' :
+                                    '<span style="color: #10B981; font-size: 0.85rem;">✓ Completed</span>'}
+                            </td>
                         </tr>
-                    `).join('')}
+                    `}).join('')}
                 </tbody>
             </table>
         `;
@@ -746,6 +1181,51 @@ async function loadMyBooks() {
         container.innerHTML = tableHTML;
     } catch (error) {
         console.error('Error loading borrowed books:', error);
-        container.innerHTML = `<div class="empty-state"><h3>Error loading books</h3><p>${error.message}</p></div>`;
+        container.innerHTML = `
+            <div class="empty-state">
+                <h3>Error loading books</h3>
+                <p>${error.message}</p>
+                <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 0.5rem;">Check console for details</p>
+            </div>
+        `;
+    }
+}
+
+// Return book function
+async function returnBook(bookTitle) {
+    if (!confirm(`Are you sure you want to return "${bookTitle}"?\n\nThis action will submit a return request. If there are any fines, the admin will need to verify payment before completion.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/borrow/student/return`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                book_title: bookTitle,
+                user_email: studentEmail
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            if (result.fine_amount && result.fine_amount > 0) {
+                alert(`✓ Return request submitted successfully!\n\nFine Amount: ₹${result.fine_amount}\n\nPlease pay the fine. Admin will verify the payment before completing the return.`);
+            } else {
+                alert(`✓ Book "${bookTitle}" returned successfully!\n\nNo fines were charged. The book is now available for others to borrow.`);
+            }
+            
+            // Reload the borrowed books list
+            loadMyBooks();
+        } else {
+            const error = await response.json();
+            alert(`Failed to return book: ${error.detail || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error returning book:', error);
+        alert(`Error returning book: ${error.message}`);
     }
 }

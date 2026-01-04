@@ -8,6 +8,10 @@ from app.services.gemini_ai import generate_summary, generate_qa_pairs, generate
 from app.services.audio_generation import generate_podcast_audio
 import os
 from typing import Dict, Any, Optional, List
+import redis
+import json
+
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
 
 def search_books(
@@ -70,6 +74,16 @@ def search_books(
 
 def get_or_generate_summary(db: Session, book_id: int) -> Dict[str, Any]:
     """Get summary for a book (read-only for students)"""
+    cache_key = f"summary_{book_id}"
+    
+    # Check cache first
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        cached_result = json.loads(cached_data)
+        if cached_result.get("status") == "not_found":
+            raise ValueError(cached_result["error"])
+        return cached_result
+    
     # Check if book exists
     book = db.query(Books).filter(Books.book_id == book_id).first()
     if not book:
@@ -79,17 +93,38 @@ def get_or_generate_summary(db: Session, book_id: int) -> Dict[str, Any]:
     content = db.query(StaticContent).filter(StaticContent.book_id == book_id).first()
     
     if not content or content.summary_text is None or str(content.summary_text).strip() == "":
+        # Cache the not found result for 1 hour
+        not_found_result = {
+            "status": "not_found",
+            "error": f"Summary not available for book {book_id}. Please contact admin to generate static content."
+        }
+        redis_client.setex(cache_key, 3600, json.dumps(not_found_result))
         raise ValueError(f"Summary not available for book {book_id}. Please contact admin to generate static content.")
     
-    return {
+    result = {
         "book_id": book_id,
         "summary_text": str(content.summary_text),
         "status": "exists"
     }
+    
+    # Cache the result (24 hours TTL since summaries don't change)
+    redis_client.setex(cache_key, 86400, json.dumps(result))
+    
+    return result
 
 
 def get_or_generate_qa(db: Session, book_id: int) -> Dict[str, Any]:
     """Get Q&A pairs for a book (read-only for students)"""
+    cache_key = f"qa_{book_id}"
+    
+    # Check cache first
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        cached_result = json.loads(cached_data)
+        if cached_result.get("status") == "not_found":
+            raise ValueError(cached_result["error"])
+        return cached_result
+    
     # Check if book exists
     book = db.query(Books).filter(Books.book_id == book_id).first()
     if not book:
@@ -99,17 +134,35 @@ def get_or_generate_qa(db: Session, book_id: int) -> Dict[str, Any]:
     content = db.query(StaticContent).filter(StaticContent.book_id == book_id).first()
     
     if not content or content.qa_json is None or str(content.qa_json).strip() == "":
+        # Cache the not found result for 1 hour
+        not_found_result = {
+            "status": "not_found",
+            "error": f"Q&A not available for book {book_id}. Please contact admin to generate static content."
+        }
+        redis_client.setex(cache_key, 3600, json.dumps(not_found_result))
         raise ValueError(f"Q&A not available for book {book_id}. Please contact admin to generate static content.")
     
-    return {
+    result = {
         "book_id": book_id,
         "qa_json": str(content.qa_json),
         "status": "exists"
     }
+    
+    # Cache the result (24 hours TTL since Q&A don't change)
+    redis_client.setex(cache_key, 86400, json.dumps(result))
+    
+    return result
 
 
 def get_or_generate_podcast(db: Session, book_id: int) -> Dict[str, Any]:
     """Get or generate podcast script for a book"""
+    cache_key = f"podcast_{book_id}"
+    
+    # Check cache first
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        return json.loads(cached_data)
+    
     # Check if book exists
     book = db.query(Books).filter(Books.book_id == book_id).first()
     if not book:
@@ -136,19 +189,38 @@ def get_or_generate_podcast(db: Session, book_id: int) -> Dict[str, Any]:
         content.podcast_script = podcast_script  # type: ignore
         db.commit()
         db.refresh(content)
+        
+        # Invalidate cache since we just generated new content
+        redis_client.delete(cache_key)
+        
         status = "generated"
     else:
         status = "exists"
     
-    return {
+    result = {
         "book_id": book_id,
         "podcast_script": str(content.podcast_script) if content.podcast_script is not None else None,
         "status": status
     }
+    
+    # Cache the result (24 hours TTL since podcast scripts don't change)
+    redis_client.setex(cache_key, 86400, json.dumps(result))
+    
+    return result
 
 
 def get_or_generate_audio(db: Session, book_id: int) -> Dict[str, Any]:
     """Get audio file for a book (read-only for students)"""
+    cache_key = f"audio_url_{book_id}"
+    
+    # Check cache first
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        cached_result = json.loads(cached_data)
+        if cached_result.get("status") == "not_found":
+            raise ValueError(cached_result["error"])
+        return cached_result
+    
     # Check if book exists
     book = db.query(Books).filter(Books.book_id == book_id).first()
     if not book:
@@ -158,13 +230,24 @@ def get_or_generate_audio(db: Session, book_id: int) -> Dict[str, Any]:
     content = db.query(StaticContent).filter(StaticContent.book_id == book_id).first()
     
     if not content or content.audio_url is None or str(content.audio_url).strip() == "":
+        # Cache the not found result for 1 hour
+        not_found_result = {
+            "status": "not_found",
+            "error": f"Audio not available for book {book_id}. Please contact admin to generate static content."
+        }
+        redis_client.setex(cache_key, 3600, json.dumps(not_found_result))
         raise ValueError(f"Audio not available for book {book_id}. Please contact admin to generate static content.")
     
-    return {
+    result = {
         "book_id": book_id,
         "audio_url": str(content.audio_url),
         "status": "exists"
     }
+    
+    # Cache the result (24 hours TTL since audio URLs don't change)
+    redis_client.setex(cache_key, 86400, json.dumps(result))
+    
+    return result
 
 
 def get_static_content(db: Session, book_id: int):
