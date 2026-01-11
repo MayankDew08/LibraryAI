@@ -89,5 +89,3 @@ If you change the backend host/port, update `API_BASE_URL` in the frontend scrip
 > Add a short demo video and a few screenshots here for GitHub.
 
 ---
-
-If you want, I can also add a minimal root-level “one command” dev script (Windows-friendly) that boots Redis/MySQL checks + backend + frontend server in a predictable order.
