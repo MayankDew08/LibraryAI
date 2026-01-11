@@ -173,5 +173,3 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 - Deep dive (complexities): `docs/COMPLEXITIES.md`
 
 ---
-
-If you want, I can also add a small `scripts/` folder (PowerShell) to bootstrap MySQL schema creation and Redis startup checks—kept minimal and Windows-friendly.
